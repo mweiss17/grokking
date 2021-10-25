@@ -1,6 +1,13 @@
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
+from typing import List, Tuple
 
+# Tensor of size 2
+InputTensor = torch.Tensor
+# Tensor of size 1
+OutputTensor = torch.Tensor
+# 0 = op, 1 = '='
+NUM_SPECIAL_CHARS = 2
 
 class ModularArithmetic:
     # TODO: Clean this up https://pytorch.org/docs/stable/_modules/torch/utils/data/dataset.html#IterableDataset
@@ -15,15 +22,18 @@ class ModularArithmetic:
         matrix = torch.zeros(size=(self.p, self.p), dtype=int)
         for i in range(self.p):
             for j in range(self.p):
-                matrix[i][j] = self.operation(i, j)
+                matrix[i][j] = self.operation(i, j) + NUM_SPECIAL_CHARS
         return matrix
 
     def build_input_matrix(self):
-        matrix = torch.zeros(size=(self.p, self.p, 2), dtype=int)
+        matrix = torch.zeros(size=(self.p, self.p, 4), dtype=int)
         for i in range(self.p):
             for j in range(self.p):
-                matrix[i][j][0] = i
-                matrix[i][j][1] = j
+                # Increment both input values by two to make space for special tokens
+                matrix[i][j][0] = i + NUM_SPECIAL_CHARS
+                matrix[i][j][1] = 0  # special token for operation
+                matrix[i][j][2] = j + NUM_SPECIAL_CHARS
+                matrix[i][j][3] = 1  # special token for '='
         return matrix
 
     def build_mask(self):
@@ -49,11 +59,16 @@ class ModularArithmeticDataset(Dataset):
     def __getitem__(self, idx):
         return (self.inputs[idx], self.outputs[idx])
 
-
+def collate_fn(samples: List[Tuple[InputTensor, OutputTensor]]):
+    inputs = torch.stack([sample[0] for sample in samples])
+    outputs = torch.stack([sample[1] for sample in samples])
+    return (inputs, outputs)
 
 
 if __name__ == '__main__':
     ma = ModularArithmetic()
     train_ds = ModularArithmeticDataset(ma, train=True)
     valid_ds = ModularArithmeticDataset(ma, train=False)
-    print("ouh")
+    batch_size = 512
+    train_dataloader = DataLoader(train_ds, shuffle=True, collate_fn=collate_fn, batch_size=batch_size)
+    print(next(iter(train_dataloader)))
