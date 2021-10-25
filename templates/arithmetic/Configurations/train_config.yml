@@ -1,2 +1,9 @@
 batch_size: 512
 lr: 0.001
+ntokens: 99  # size of vocabulary
+emsize: 128  # embedding dimension
+d_hid: 128  # dimension of the feedforward network model in nn.TransformerEncoder
+nlayers: 2  # number of nn.TransformerEncoderLayer in nn.TransformerEncoder
+nhead: 4  # number of heads in nn.MultiheadAttention
+dropout: 0.0  # dropout probability
+weight_decay: 0.0
