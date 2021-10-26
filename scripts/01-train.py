@@ -1,6 +1,7 @@
 import torch
 import sys
 from torch.utils.data import Dataset, DataLoader
+import torch.nn.functional as F
 from grokking.dataset import ModularArithmetic, ModularArithmeticDataset, collate_fn
 from speedrun import BaseExperiment, WandBMixin, IOMixin
 from grokking.model import TransformerModel
@@ -12,6 +13,8 @@ class Trainer(BaseExperiment, WandBMixin, IOMixin):
     def __init__(self):
         super(Trainer, self).__init__()
         self.auto_setup()
+        if self.get("use_wandb"):
+            self.initialize_wandb()
         self.train_dataloader, self.valid_dataloader = self._build_dataset()
         self.device = torch.device('cpu')
         self.model = self._build_model()
@@ -31,21 +34,36 @@ class Trainer(BaseExperiment, WandBMixin, IOMixin):
         model = TransformerModel(self.get("ntokens"), self.get("emsize"), self.get("nhead"), self.get("d_hid"), self.get("nlayers"), self.get("dropout")).to(self.device)
         return model
 
+    def compute_accuracy(self, preds, labels):
+
+        correct = preds.argmax(1).eq(labels).sum() / labels.size()[0]
+        return correct
+
     def run(self):
-        for step, (inputs, outputs) in enumerate(self.train_dataloader):
-            # Forward
-            preds = self.model(inputs, torch.tensor([0]))
+        for epoch in range(self.get("n_epochs")):
+            for step, (inputs, labels) in enumerate(self.train_dataloader):
+                # Forward
+                preds = self.model(inputs)
+                correct = self.compute_accuracy(preds, labels)
 
-            # Compute loss
-            self.model.loss_fn(preds, outputs)
+                # Compute loss
+                loss = self.model.loss_fn(preds, labels)
+                loss.backward()
 
-            # Optimize
-            self.optimizer.step()
-            self.optimizer.zero_grad()
+                # Optimize
+                self.optimizer.step()
+                self.optimizer.zero_grad()
 
-            # Record metrics
+                self.next_step()
 
-            # Checkpoint
+                # Record metrics
+                if self.get("use_wandb"):
+                    self.wandb_log(**{"loss": loss.detach(), "step": self.step})
+                else:
+                    print(f'"loss": {loss.detach()}, "step": {self.step}, "% correct": {correct}')
+                # Checkpoint
+
+            self.next_epoch()
 
     def save_checkpoint(self):
         data = {"model": self.model.state_dict(), "optim": self.optimizer.state_dict()}

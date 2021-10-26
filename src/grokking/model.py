@@ -30,33 +30,35 @@ class TransformerModel(nn.Module):
         self.decoder.bias.data.zero_()
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
-    def forward(self, src: Tensor, memory: Tensor) -> Tensor:
+    def forward(self, src: Tensor) -> Tensor:
 
         # forward the GPT model
-        breakpoint()
-
-        token_embeddings = self.encoder(src) # each index maps to a (learnable) vector
-        position_embeddings = self.pos_emb[:, :t, :] # each position maps to a (learnable) vector
-        x = self.drop(token_embeddings + position_embeddings)
-        x = self.blocks(x)
-        x = self.ln_f(x)
-        logits = self.head(x)
-        
-
+        # breakpoint()
+        #
+        # token_embeddings = self.encoder(src) # each index maps to a (learnable) vector
+        # position_embeddings = self.pos_emb[:, :t, :] # each position maps to a (learnable) vector
+        # x = self.drop(token_embeddings + position_embeddings)
+        # x = self.blocks(x)
+        # x = self.ln_f(x)
+        # logits = self.head(x)
+        #
         src = self.encoder(src) * math.sqrt(self.d_model)
+        # tgt = self.encoder(torch.zeros((src.shape[0], 1), dtype=torch.long)) * math.sqrt(self.d_model)
         src = self.pos_encoder(src)
-        output = self.transformer_decoder(tgt, memory, tgt_mask, memory_mask)
-        
+        # tgt = torch.cat([src, tgt], axis=1)
+        output = self.transformer_decoder(src, src)
         output = self.decoder(output)
+        output = output[:, -1] # last token
         return output
 
+    def loss_fn(self, input, target):
+        loss = self.criterion(input, target)
+        return loss
 
 def generate_square_subsequent_mask(sz: int) -> Tensor:
     """Generates an upper-triangular matrix of -inf, with zeros on diag."""
     return torch.triu(torch.ones(sz, sz) * float('-inf'), diagonal=1)
 
-
-# In[19]:
 
 
 class PositionalEncoding(nn.Module):
@@ -81,6 +83,3 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
 
 
-    def loss_fn(self, input, target):
-        loss = self.criterion(input, target)
-        return loss

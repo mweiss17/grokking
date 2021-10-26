@@ -26,7 +26,7 @@ class ModularArithmetic:
         return matrix
 
     def build_input_matrix(self):
-        matrix = torch.zeros(size=(self.p, self.p, 5), dtype=int)
+        matrix = torch.zeros(size=(self.p, self.p, 6), dtype=int)
         for i in range(self.p):
             for j in range(self.p):
                 # Increment both input values by two to make space for special tokens
@@ -35,6 +35,7 @@ class ModularArithmetic:
                 matrix[i][j][2] = 1  # special token for operation
                 matrix[i][j][3] = j + NUM_SPECIAL_CHARS
                 matrix[i][j][4] = 2  # special token for '='
+                matrix[i][j][5] = self.operation(i, j) + NUM_SPECIAL_CHARS
         return matrix
 
     def build_mask(self):
