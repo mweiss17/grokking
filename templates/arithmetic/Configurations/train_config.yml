@@ -6,6 +6,9 @@ d_hid: 128  # dimension of the feedforward network model in nn.TransformerEncode
 nlayers: 2  # number of nn.TransformerEncoderLayer in nn.TransformerEncoder
 nhead: 4  # number of heads in nn.MultiheadAttention
 dropout: 0.0  # dropout probability
-weight_decay: 0.0
+weight_decay: 1.0
 use_wandb: False
-n_epochs: 1000000
+n_epochs: 10000
+print_every: 100
+experiment_directory: /home/hattie/scratch/grokking/modular_substraction
+save_every: 100 #do not save model checkpoints if save_every == 0

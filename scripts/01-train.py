@@ -38,14 +38,34 @@ class Trainer(BaseExperiment, WandBMixin, IOMixin):
 
         correct = preds.argmax(1).eq(labels).sum() / labels.size()[0]
         return correct
+    
+    def test(self):
+        self.model.eval()
+        total_correct = 0
+        total_ex = 0
+        
+        with torch.no_grad():
+            for inputs, labels in self.valid_dataloader:
+                inputs = inputs[:, :5].T
+                preds = self.model(inputs)
+                correct = self.compute_accuracy(preds, labels)
+                total_correct += correct * labels.size(0)
+                total_ex += labels.size(0)
+        self.model.train()
+        return total_correct / total_ex
 
     def run(self):
         for epoch in range(self.get("n_epochs")):
             for step, (inputs, labels) in enumerate(self.train_dataloader):
                 # Forward
+                #manual adjustment to inputs for now
+                inputs = inputs[:, :5].T
                 preds = self.model(inputs)
-                correct = self.compute_accuracy(preds, labels)
-
+                
+                if self.step % self.get("print_every") == 0:
+                    correct = self.compute_accuracy(preds, labels)
+                    val_correct = self.test()
+                
                 # Compute loss
                 loss = self.model.loss_fn(preds, labels)
                 loss.backward()
@@ -57,11 +77,15 @@ class Trainer(BaseExperiment, WandBMixin, IOMixin):
                 self.next_step()
 
                 # Record metrics
-                if self.get("use_wandb"):
-                    self.wandb_log(**{"loss": loss.detach(), "step": self.step})
-                else:
-                    print(f'"loss": {loss.detach()}, "step": {self.step}, "% correct": {correct}')
+                if self.step % self.get("print_every") == 0:
+                    if self.get("use_wandb"):
+                        self.wandb_log(**{"loss": loss.detach(), "step": self.step, "train accuracy": correct, "test accuracy": val_correct})
+                    else:
+                        print(f'"loss": {loss.detach()}, "epoch":{epoch}, "step": {self.step}, "train accuracy": {correct}, "test accuracy": {val_correct}')
+                        
                 # Checkpoint
+                if self.get("save_every") > 0 and self.step % self.get("save_every") == 0:
+                    self.save_checkpoint()
 
             self.next_epoch()
 
