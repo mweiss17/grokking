@@ -29,6 +29,7 @@ setuptools.setup(
         'wandb',
         'google-cloud-storage',
         'speedrun @ git+https://git@github.com/inferno-pytorch/speedrun@dev#egg=speedrun',
+        'wormulon @ git+https://git@github.com/mweiss17/wormulon/@main#egg=wormulon'
         ],
     extras_require={
         "xla": ['torch-xla @ https://storage.googleapis.com/tpu-pytorch/wheels/tpuvm/torch_xla-1.9-cp38-cp38-linux_x86_64.whl'],

@@ -1,6 +1,6 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
-from typing import List, Tuple
+from typing import List, Tuple, Callable
 
 # Tensor of size 2
 InputTensor = torch.Tensor
@@ -11,9 +11,11 @@ NUM_SPECIAL_CHARS = 3
 
 class ModularArithmetic:
     # TODO: Clean this up https://pytorch.org/docs/stable/_modules/torch/utils/data/dataset.html#IterableDataset
-    def __init__(self, train_data_fraction: float = 0.5):
+    def __init__(self, train_data_fraction: float = 0.5, operation: Callable = None, name: str = "subtraction_mod_97"):
         self.p: int = 97
+        self.name = name
         self.train_data_fraction = train_data_fraction
+        self.operation = operation if operation is not None else lambda x, y: (x - y) % self.p
         self.input_matrix = self.build_input_matrix()
         self.output_matrix = self.build_output_matrix()
         self.mask = self.build_mask()
@@ -45,12 +47,12 @@ class ModularArithmetic:
         mask = torch.bernoulli(probs).bool()
         return mask
 
-    def operation(self, a: int, b: int):
-        return (a - b) % self.p
 
 
 class ModularArithmeticDataset(Dataset):
     def __init__(self, ma: ModularArithmetic, train: bool):
+        self.split = "train" if train else "valid"
+        self.name = ma.name
         mask = ma.mask if train else ~ma.mask
         self.inputs = ma.input_matrix[mask]
         self.outputs = ma.output_matrix[mask]
@@ -60,6 +62,10 @@ class ModularArithmeticDataset(Dataset):
 
     def __getitem__(self, idx):
         return (self.inputs[idx], self.outputs[idx])
+
+    def save(self):
+        torch.save(self, f"datasets/{self.name}_{self.split}.pt")
+
 
 def collate_fn(samples: List[Tuple[InputTensor, OutputTensor]]):
     inputs = torch.stack([sample[0] for sample in samples])

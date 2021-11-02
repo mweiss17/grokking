@@ -1,5 +1,6 @@
 import torch
 import sys
+import random
 from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 from grokking.dataset import ModularArithmetic, ModularArithmeticDataset, collate_fn
@@ -13,39 +14,55 @@ class Trainer(BaseExperiment, WandBMixin, IOMixin):
     def __init__(self):
         super(Trainer, self).__init__()
         self.auto_setup()
+
+        # In case we want to override the default wandb project
+        self.WANDB_PROJECT = self.get("WANDB_PROJECT", self.WANDB_PROJECT)
+        self.WANDB_ENTITY = self.get("WANDB_PROJECT", self.WANDB_ENTITY)
+
+        self.set_seeds(self.get("seed"))
         if self.get("use_wandb"):
             self.initialize_wandb()
         self.train_dataloader, self.valid_dataloader = self._build_dataset()
         self.device = torch.device('cpu')
-        self.model = self._build_model()
-        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.get("lr"), betas=(0.9, 0.98), weight_decay=self.get("weight_decay"))
+        self._build_model()
         self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, 1.0, gamma=0.95)
 
 
+    def set_seeds(self, seed):
+        random.seed(seed)
+        torch.manual_seed(seed)
+
     def _build_dataset(self):
-        ma = ModularArithmetic()
-        train_ds = ModularArithmeticDataset(ma, train=True)
-        valid_ds = ModularArithmeticDataset(ma, train=False)
+        train_ds = torch.load(f"{self.get('dataset_path')}/{self.get('dataset_name')}_train.pt")
+        valid_ds = torch.load(f"{self.get('dataset_path')}/{self.get('dataset_name')}_valid.pt")
+
         train_dataloader = DataLoader(train_ds, shuffle=True, collate_fn=collate_fn, batch_size=self.get("batch_size"))
         valid_dataloader = DataLoader(valid_ds, shuffle=True, collate_fn=collate_fn, batch_size=self.get("batch_size"))
         return train_dataloader, valid_dataloader
 
     def _build_model(self):
-        model = TransformerModel(self.get("ntokens"), self.get("emsize"), self.get("nhead"), self.get("d_hid"), self.get("nlayers"), self.get("dropout")).to(self.device)
-        return model
+        self.model = TransformerModel(self.get("ntokens"), self.get("emsize"), self.get("nhead"), self.get("d_hid"), self.get("nlayers"), self.get("dropout")).to(self.device)
+        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.get("lr"), betas=(0.9, 0.98), weight_decay=self.get("weight_decay"))
+        if self.get("checkpoint_path"):
+            self.load_checkpoint()
 
     def compute_accuracy(self, preds, labels):
 
         correct = preds.argmax(1).eq(labels).sum() / labels.size()[0]
         return correct
     
-    def test(self):
+    def test(self, split="valid"):
         self.model.eval()
+        if split == "valid":
+            dataloader = self.valid_dataloader
+        else:
+            dataloader = self.train_dataloader
+
         total_correct = 0
         total_ex = 0
         
         with torch.no_grad():
-            for inputs, labels in self.valid_dataloader:
+            for inputs, labels in dataloader:
                 inputs = inputs[:, :5].T
                 preds = self.model(inputs)
                 correct = self.compute_accuracy(preds, labels)
@@ -64,8 +81,9 @@ class Trainer(BaseExperiment, WandBMixin, IOMixin):
                 
                 if self.step % self.get("print_every") == 0:
                     correct = self.compute_accuracy(preds, labels)
-                    val_correct = self.test()
-                
+                    val_correct = self.test(split="valid")
+                    train_correct = self.test(split="train")
+
                 # Compute loss
                 loss = self.model.loss_fn(preds, labels)
                 loss.backward()
@@ -79,9 +97,9 @@ class Trainer(BaseExperiment, WandBMixin, IOMixin):
                 # Record metrics
                 if self.step % self.get("print_every") == 0:
                     if self.get("use_wandb"):
-                        self.wandb_log(**{"loss": loss.detach(), "step": self.step, "train accuracy": correct, "test accuracy": val_correct})
+                        self.wandb_log(**{"loss": loss.detach(), "step": self.step, "train batch accuracy": correct, "test accuracy": val_correct, "train global accuracy": train_correct})
                     else:
-                        print(f'"loss": {loss.detach()}, "epoch":{epoch}, "step": {self.step}, "train accuracy": {correct}, "test accuracy": {val_correct}')
+                        print(f'"loss": {loss.detach()}, "epoch":{epoch}, "step": {self.step}, "train batch accuracy": {correct}, "test global accuracy": {val_correct}, train global accuracy: {train_correct}')
                         
                 # Checkpoint
                 if self.get("save_every") > 0 and self.step % self.get("save_every") == 0:
